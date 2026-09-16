@@ -1,0 +1,55 @@
+name: Validate plugin
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: manifest.json is well-formed and complete
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+
+          m = json.load(open("manifest.json"))
+          required = ["schemaVersion", "id", "name", "version", "author",
+                      "license", "kinds", "entryPoints"]
+          missing = [k for k in required if k not in m]
+          if missing:
+              print("manifest.json missing required fields:", missing)
+              sys.exit(1)
+
+          # kinds use hyphenated names; entryPoints keys are camelCase
+          entry_key = {
+              "bar-widget": "barWidget",
+              "panel": "panel",
+              "overlay": "overlay",
+              "menu": "menu",
+              "service": "service",
+              "bar": "bar",
+          }
+          for kind in m["kinds"]:
+              key = entry_key.get(kind, kind)
+              if key not in m["entryPoints"]:
+                  print(f"kinds lists {kind} but entryPoints has no {key} entry")
+                  sys.exit(1)
+          print("manifest ok:", m["id"], m["version"])
+          EOF
+
+      - name: entry files exist
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+
+          m = json.load(open("manifest.json"))
+          missing = [f for f in m["entryPoints"].values() if not os.path.exists(f)]
+          if missing:
+              print("missing entry files:", missing)
+              sys.exit(1)
+          print("entry files ok")
+          EOF

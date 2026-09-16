@@ -1,0 +1,235 @@
+#!/bin/bash
+# omaclean — Safe, modern system cleanup for Omarchy / Arch Linux.
+# Routes subcommands and interactive main menu.
+
+set -euo pipefail
+
+OMACLEAN_VERSION="0.3.0"
+
+# Resolve real script directory across symlinks (e.g. ~/.local/bin/omaclean)
+_src=${BASH_SOURCE[0]}
+while [[ -L $_src ]]; do
+    _dir=$(cd -P -- "$(dirname -- "$_src")" && pwd)
+    _src=$(readlink -- "$_src")
+    [[ $_src == /* ]] || _src="$_dir/$_src"
+done
+OMACLEAN_ROOT=$(cd -P -- "$(dirname -- "$_src")" && pwd)
+readonly OMACLEAN_ROOT
+
+# shellcheck source=lib/common.sh
+source "$OMACLEAN_ROOT/lib/common.sh"
+# shellcheck source=lib/clean.sh
+source "$OMACLEAN_ROOT/lib/clean.sh"
+# shellcheck source=lib/purge.sh
+source "$OMACLEAN_ROOT/lib/purge.sh"
+# shellcheck source=lib/tools.sh
+source "$OMACLEAN_ROOT/lib/tools.sh"
+
+# Refuse running entire script as root (the internal _sys helper is the only
+# mode that runs elevated, and only when entered via pkexec).
+if [[ ${EUID:-0} -eq 0 && ${1:-} != _sys ]]; then
+    die "Run omaclean without sudo. It requests administrator access when needed."
+fi
+
+usage() {
+    cat << EOF
+omaclean — Safe, modern cleanup for Omarchy / Arch Linux
+
+Usage: omaclean [command] [options]
+
+Commands:
+  clean [--dry-run] [--select] [--trash] [--json]    Analyze and clean caches/logs
+  analyze [--dry-run] [--select] [--trash] [--json]  Alias of clean
+  purge [--dry-run] [--age N]                        Remove project build artifacts
+  remove                                             Uninstall system packages
+  history [N]                                        View past cleanup operations (default: 50)
+  --help, -h                                         Show this help message
+  --version, -v                                      Print version
+
+Run 'omaclean' without arguments for the interactive menu.
+EOF
+    return 0
+}
+
+# ── 交互式主菜单（平铺于终端内，无全屏弹窗感）────────────────
+readonly -a MAIN_MENU_ITEMS=(
+    "Analyze & Clean  Scan junk, review, and clean"
+    "Purge            Remove project build artifacts"
+    "Remove           Uninstall system packages"
+    "History          View past cleanup operations"
+)
+readonly MAIN_MENU_COUNT=${#MAIN_MENU_ITEMS[@]}
+# 与 show_brand_banner 输出行数对齐：空行 + 4 行 logo + 空行 + 状态 + 空行
+readonly MAIN_MENU_FIRST_ROW=9
+
+main_menu_row() {
+    printf '%d' $((MAIN_MENU_FIRST_ROW + $1 - 1))
+}
+
+paint_main_menu_line() {
+    local num=$1 highlight=$2
+    local text="${MAIN_MENU_ITEMS[$((num - 1))]}"
+    if [[ $highlight == 1 ]]; then
+        echo -e "  ${CYAN}${ICON_ARROW} ${num}. ${text}${NC}"
+    else
+        echo -e "    ${num}. ${text}"
+    fi
+}
+
+draw_main_menu_full() {
+    local sel=$1 num
+    printf '\033[H\033[2J'
+    show_brand_banner
+
+    for num in $(seq 1 "$MAIN_MENU_COUNT"); do
+        if [[ $num -eq $sel ]]; then
+            paint_main_menu_line "$num" 1
+        else
+            paint_main_menu_line "$num" 0
+        fi
+    done
+
+    echo ""
+    echo -e "  ${GRAY}↑↓ / 1-4  |  → select  |  ← quit${NC}"
+    echo ""
+}
+
+update_main_menu_highlight() {
+    local from=$1 to=$2 row
+    [[ $from -eq $to ]] && return 0
+    row=$(main_menu_row "$from")
+    printf '\033[%d;1H\033[K' "$row"
+    paint_main_menu_line "$from" 0
+    row=$(main_menu_row "$to")
+    printf '\033[%d;1H\033[K' "$row"
+    paint_main_menu_line "$to" 1
+}
+
+run_main_menu_item() {
+    local item=$1 key rc=0
+    printf '\033[?25h\033[H\033[2J'
+
+    case "$item" in
+        1) cmd_clean || rc=$? ;;
+        2) cmd_purge || rc=$? ;;
+        3) cmd_remove || rc=$? ;;
+        4) cmd_history || rc=$? ;;
+    esac
+    ((rc == 0 || rc == 130)) || warn "Action exited with status ${rc}"
+
+    while true; do
+        echo -ne "  ${CYAN}${ICON_ARROW}${NC} ${GREEN}←${NC} main menu  |  ${GRAY}→${NC} exit: "
+        key=$(read_key)
+        printf '\r\033[K'
+        case "$key" in
+            LEFT | ENTER | SPACE) return 0 ;;
+            RIGHT | QUIT)
+                echo ""
+                return 1
+                ;;
+        esac
+    done
+}
+
+interactive_main_menu() {
+    local current=1 key item prev
+    trap 'printf "\033[?25h"' EXIT
+    trap 'printf "\033[?25h"; exit 130' INT
+
+    printf '\033[?25l'
+    draw_main_menu_full "$current"
+
+    while true; do
+        key=$(read_key)
+        item=0
+        case "$key" in
+            UP)
+                prev=$current
+                ((current > 1)) && ((current--)) || current=$MAIN_MENU_COUNT
+                update_main_menu_highlight "$prev" "$current"
+                continue
+                ;;
+            DOWN)
+                prev=$current
+                ((current < MAIN_MENU_COUNT)) && ((current++)) || current=1
+                update_main_menu_highlight "$prev" "$current"
+                continue
+                ;;
+            CHAR:1)
+                update_main_menu_highlight "$current" 1
+                current=1
+                item=1
+                ;;
+            CHAR:2)
+                update_main_menu_highlight "$current" 2
+                current=2
+                item=2
+                ;;
+            CHAR:3)
+                update_main_menu_highlight "$current" 3
+                current=3
+                item=3
+                ;;
+            CHAR:4)
+                update_main_menu_highlight "$current" 4
+                current=4
+                item=4
+                ;;
+            RIGHT | ENTER) item=$current ;;
+            LEFT | QUIT)
+                printf '\033[?25h'
+                echo ""
+                return 0
+                ;;
+            *) continue ;;
+        esac
+
+        if ((item > 0)) && ! run_main_menu_item "$item"; then
+            return 0
+        fi
+        draw_main_menu_full "$current"
+    done
+}
+
+# ── 命令行分发 ────────────────────────────────────────────────
+cmd=${1:-}
+if [[ $# -gt 0 ]]; then
+    shift
+fi
+
+case "$cmd" in
+    clean)
+        cmd_clean "$@"
+        ;;
+    _sys)
+        cmd_sys_exec "$@"
+        ;;
+    purge)
+        cmd_purge "$@"
+        ;;
+    analyze)
+        cmd_analyze "$@"
+        ;;
+    remove)
+        cmd_remove "$@"
+        ;;
+    history)
+        cmd_history "$@"
+        ;;
+    "")
+        if [[ -t 0 && -t 1 ]]; then
+            interactive_main_menu
+        else
+            usage
+        fi
+        ;;
+    -h | --help | help)
+        usage
+        ;;
+    -v | --version | version)
+        printf 'omaclean %s\n' "$OMACLEAN_VERSION"
+        ;;
+    *)
+        die "Unknown command: $cmd (run 'omaclean --help')"
+        ;;
+esac

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "zykyaka.omaclean",
+  "name": "omaclean",
+  "version": "1.0.0",
+  "author": "zykyaka",
+  "license": "MIT",
+  "description": "Safe cleanup for the Omarchy bar: reclaimable cache size with in-panel selection and run.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "omaclean",
+    "description": "Reclaimable cache and log size; opens the omaclean panel",
+    "category": "System",
+    "aliases": [
+      "cleanup",
+      "disk"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
