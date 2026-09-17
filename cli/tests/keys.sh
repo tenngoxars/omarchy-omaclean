@@ -62,7 +62,7 @@ printf 'ok   read_key maps keys correctly\n'
 
 # 上下移动不应每次整屏清屏重绘（banner 只出现一次）。
 nav_output=$(printf '\x1b[A\x1b[A\x1b[B\x1b[D' | script -qefc "$ROOT/omaclean" /dev/null | tr -d '\r')
-banner_count=$(grep -c 'omaclean v0.1.0' <<< "$nav_output")
+banner_count=$(grep -c 'omaclean v' <<< "$nav_output")
 ((banner_count == 1)) || fail "arrow navigation redrew banner ${banner_count} times (expected 1)"
 printf 'ok   arrow navigation avoids full-screen redraw\n'
 

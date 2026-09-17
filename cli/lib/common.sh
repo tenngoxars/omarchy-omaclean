@@ -56,7 +56,7 @@ has_cmd() {
     command -v -- "$1" > /dev/null 2>&1
 }
 
-# 需要管理员权限的命令：已经在 root（如 pkexec 内部模式）就直接执行，否则走 sudo
+# 交互流程的固定系统命令：已是 root 时直接执行，否则走 sudo。
 as_root() {
     if [[ ${EUID:-0} -eq 0 ]]; then
         "$@"
@@ -78,7 +78,7 @@ show_brand_banner() {
     echo ""
     echo -e "${BLUE}  ___  _ __ ___   ___  | | ___ ${NC}"
     echo -e "${BLUE} / _ \| '_ \` _ \ / _ \ | |/ _ \\${NC}"
-    echo -e "${BLUE}| (_) | | | | | | (_) || |  __/${NC}  ${GRAY}omaclean v0.1.0${NC}"
+    echo -e "${BLUE}| (_) | | | | | | (_) || |  __/${NC}  ${GRAY}omaclean v${OMACLEAN_VERSION:-dev}${NC}"
     echo -e "${BLUE} \___/|_| |_| |_|\___/ |_|\___|${NC}  ${GREEN}Deep clean and maintain your Arch.${NC}"
     echo ""
     local free_sp
@@ -308,7 +308,7 @@ prompt_inline_checkbox() {
                 inline_menu_swap_cursor "$item_count" "$prev" "$current" "$2" "$3"
                 ;;
             SPACE)
-                _checked[$current]=$((1 - ${_checked[$current]:-0}))
+                _checked[current]=$((1 - ${_checked[current]:-0}))
                 inline_menu_repaint_item "$item_count" "$current" 1 "${_checked[$current]:-0}" "${_labels[$current]}"
                 ;;
             ALL | SELECT_ALL)
@@ -318,11 +318,11 @@ prompt_inline_checkbox() {
                 done
                 if [[ $all_selected == 1 ]]; then
                     for i in "${!_labels[@]}"; do
-                        _checked[$i]=0
+                        _checked[i]=0
                     done
                 else
                     for i in "${!_labels[@]}"; do
-                        _checked[$i]=1
+                        _checked[i]=1
                     done
                 fi
                 for i in "${!_labels[@]}"; do

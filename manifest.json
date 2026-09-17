@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "zykyaka.omaclean",
   "name": "omaclean",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "zykyaka",
   "license": "MIT",
   "description": "Safe cleanup for the Omarchy bar: reclaimable cache size with in-panel selection and run.",

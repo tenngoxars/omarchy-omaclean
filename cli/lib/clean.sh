@@ -474,6 +474,21 @@ clean_paths() {
     CLEAN_RESULT_BYTES=$total
 }
 
+readonly CLEAN_PKEXEC_BIN=/usr/bin/pkexec
+readonly CLEAN_TIMEOUT_BIN=/usr/bin/timeout
+readonly CLEAN_PACCACHE_BIN=/usr/bin/paccache
+readonly CLEAN_JOURNALCTL_BIN=/usr/bin/journalctl
+readonly CLEAN_TMPFILES_BIN=/usr/bin/systemd-tmpfiles
+
+trusted_root_executable() {
+    local path=$1 owner mode permissions
+    [[ -f $path && ! -L $path && -x $path ]] || return 1
+    read -r owner mode < <(/usr/bin/stat -c '%u %a' -- "$path") || return 1
+    [[ $owner == 0 && $mode =~ ^[0-7]+$ ]] || return 1
+    permissions=$((8#$mode))
+    (( (permissions & 0022) == 0 ))
+}
+
 CLEAN_RESULT_BYTES=0
 CLEAN_RESULT_TEXT=""
 
@@ -483,9 +498,9 @@ execute_clean_item() {
     CLEAN_RESULT_TEXT=""
     case "$id" in
         pacman)
-            has_cmd paccache || return 1
+            trusted_root_executable "$CLEAN_PACCACHE_BIN" || return 1
             CLEAN_RESULT_BYTES=${CLEAN_BYTES[pacman]:-0}
-            as_root paccache -rk2 > /dev/null 2>&1 || return 1
+            as_root "$CLEAN_PACCACHE_BIN" -rk2 > /dev/null 2>&1 || return 1
             log_op clean PRUNED pacman-package-cache "$CLEAN_RESULT_BYTES"
             return 0
             ;;
@@ -495,17 +510,17 @@ execute_clean_item() {
             return 0
             ;;
         journal)
-            has_cmd journalctl || return 1
+            trusted_root_executable "$CLEAN_JOURNALCTL_BIN" || return 1
             CLEAN_RESULT_BYTES=${CLEAN_BYTES[journal]:-0}
-            as_root journalctl --vacuum-size="${CLEAN_JOURNAL_LIMIT}B" > /dev/null 2>&1 || return 1
+            as_root "$CLEAN_JOURNALCTL_BIN" --vacuum-size="${CLEAN_JOURNAL_LIMIT}B" > /dev/null 2>&1 || return 1
             CLEAN_RESULT_TEXT="kept $(human_size "$CLEAN_JOURNAL_LIMIT")"
             log_op clean VACUUMED systemd-journal "$CLEAN_RESULT_BYTES"
             return 0
             ;;
         tmp)
-            has_cmd systemd-tmpfiles || return 1
+            trusted_root_executable "$CLEAN_TMPFILES_BIN" || return 1
             CLEAN_RESULT_BYTES=${CLEAN_BYTES[tmp]:-0}
-            as_root systemd-tmpfiles --clean > /dev/null 2>&1 || return 1
+            as_root "$CLEAN_TMPFILES_BIN" --clean > /dev/null 2>&1 || return 1
             log_op clean REMOVED expired-tmpfiles "$CLEAN_RESULT_BYTES"
             return 0
             ;;
@@ -586,53 +601,49 @@ execute_clean_item() {
 
 # ── 非交互执行（供状态栏插件等消费方）─────────────────────────
 
-# 内部提权执行器：只经 pkexec 以 root 运行，仅接受系统项白名单。
-# 每个 id 输出一行 TSV：id <TAB> status <TAB> freed_bytes <TAB> text
-cmd_sys_exec() {
-    local ids=${1:-} id
-    [[ ${EUID:-0} -eq 0 ]] || die "_sys is an internal command (run via pkexec)"
-    [[ -n $ids ]] || die "_sys requires a comma-separated item list"
+# 系统项只允许映射到固定的 root-owned 程序；root 进程不加载本项目脚本。
+execute_pkexec_system_item() {
+    local id=$1 target rc=0
+    local -a command=()
+    CLEAN_RESULT_BYTES=0
+    CLEAN_RESULT_TEXT=""
 
-    # 日志写回调用者（pkexec 提供 PKEXEC_UID）的 state 目录
-    if [[ -n ${PKEXEC_UID:-} ]]; then
-        local caller_home
-        caller_home=$(getent passwd "$PKEXEC_UID" 2> /dev/null | cut -d: -f6) || caller_home=""
-        if [[ -n $caller_home && -d $caller_home ]]; then
-            OMACLEAN_STATE_DIR="$caller_home/.local/state/omaclean"
-            OMACLEAN_LOG_FILE="$OMACLEAN_STATE_DIR/operations.log"
-            mkdir -p -- "$OMACLEAN_STATE_DIR" 2> /dev/null || true
-            chown -- "$PKEXEC_UID" "$OMACLEAN_STATE_DIR" 2> /dev/null || true
-            if [[ ! -e $OMACLEAN_LOG_FILE ]]; then
-                : >> "$OMACLEAN_LOG_FILE" 2> /dev/null || true
-                chown -- "$PKEXEC_UID" "$OMACLEAN_LOG_FILE" 2> /dev/null || true
-            fi
+    case "$id" in
+        pacman) command=("$CLEAN_PACCACHE_BIN" -rk2) ;;
+        journal) command=("$CLEAN_JOURNALCTL_BIN" "--vacuum-size=${CLEAN_JOURNAL_LIMIT}B") ;;
+        tmp) command=("$CLEAN_TMPFILES_BIN" --clean) ;;
+        *)
+            CLEAN_RESULT_TEXT="unknown system item"
+            return 2
+            ;;
+    esac
+    CLEAN_RESULT_BYTES=${CLEAN_BYTES[$id]:-0}
+
+    for target in "$CLEAN_TIMEOUT_BIN" "$CLEAN_PKEXEC_BIN" "${command[0]}"; do
+        if ! trusted_root_executable "$target"; then
+            CLEAN_RESULT_TEXT="trusted admin executable unavailable"
+            return 127
         fi
-    fi
-
-    local -a want=()
-    IFS=',' read -r -a want <<< "$ids"
-    for id in "${want[@]}"; do
-        [[ -n $id ]] || continue
-        local rc=0 text=""
-        case "$id" in
-            pacman) CLEAN_BYTES[pacman]=$(pacman_reclaim_bytes) ;;
-            journal) CLEAN_BYTES[journal]=$(journal_disk_bytes) ;;
-            tmp) CLEAN_BYTES[tmp]=$(tmpfiles_reclaim_bytes) ;;
-            *)
-                printf '%s\tfailed\t0\t%s\n' "$id" "unknown system item"
-                continue
-                ;;
-        esac
-        CLEAN_BYTES[$id]=${CLEAN_BYTES[$id]:-0}
-
-        execute_clean_item "$id" || rc=$?
-        text=${CLEAN_RESULT_TEXT:-}
-        case "$rc" in
-            0) printf '%s\tok\t%s\t%s\n' "$id" "${CLEAN_RESULT_BYTES:-0}" "$text" ;;
-            2) printf '%s\tskipped\t0\t%s\n' "$id" "${text:-not available}" ;;
-            *) printf '%s\tfailed\t0\t%s\n' "$id" "${text:-cleanup failed}" ;;
-        esac
     done
+
+    "$CLEAN_TIMEOUT_BIN" 120 "$CLEAN_PKEXEC_BIN" "${command[@]}" > /dev/null 2>&1 || rc=$?
+    case "$rc" in
+        0)
+            case "$id" in
+                pacman) log_op clean PRUNED pacman-package-cache "$CLEAN_RESULT_BYTES" ;;
+                journal)
+                    CLEAN_RESULT_TEXT="kept $(human_size "$CLEAN_JOURNAL_LIMIT")"
+                    log_op clean VACUUMED systemd-journal "$CLEAN_RESULT_BYTES"
+                    ;;
+                tmp) log_op clean REMOVED expired-tmpfiles "$CLEAN_RESULT_BYTES" ;;
+            esac
+            ;;
+        124) CLEAN_RESULT_TEXT="admin authorization timed out" ;;
+        126) CLEAN_RESULT_TEXT="admin authorization cancelled" ;;
+        127) CLEAN_RESULT_TEXT="admin authorization failed" ;;
+        *) CLEAN_RESULT_TEXT="system cleanup failed" ;;
+    esac
+    return "$rc"
 }
 
 # 单个执行结果序列化为 JSON 对象（无换行、无前缀）
@@ -641,7 +652,7 @@ exec_result_line() { # id status bytes text
         "$(json_escape "$1")" "$2" "${3:-0}" "$(json_escape "$(human_size "${3:-0}")")" "$(json_escape "${4:-}")"
 }
 
-# 按 id 列表执行清理：用户项就地执行；系统项经 pkexec 一次性提权。
+# 按 id 列表执行清理：用户项就地执行；系统项直接提权固定系统程序。
 # 只输出 JSON 结果；存在失败项时退出码非零。
 cmd_clean_exec() {
     local exec_ids=$1 allow_trash=$2
@@ -699,46 +710,19 @@ cmd_clean_exec() {
         esac
     done
 
-    if ((${#sys_ids[@]} > 0)); then
-        local joined sys_out="" pk_rc=0
-        joined=$(IFS=','; printf '%s' "${sys_ids[*]}")
-        if has_cmd pkexec; then
-            # 120s 未完成认证则放弃，避免面板无限等待挂起
-            sys_out=$(timeout 120 pkexec "$OMACLEAN_ROOT/omaclean" _sys "$joined" 2> /dev/null) || pk_rc=$?
+    for id in "${sys_ids[@]}"; do
+        rc=0
+        execute_pkexec_system_item "$id" || rc=$?
+        if ((rc == 0)); then
+            R_STATUS[$id]=ok
+            R_BYTES[$id]=${CLEAN_RESULT_BYTES:-0}
+            R_TEXT[$id]=${CLEAN_RESULT_TEXT:-}
         else
-            pk_rc=127
+            R_STATUS[$id]=failed
+            R_BYTES[$id]=0
+            R_TEXT[$id]=${CLEAN_RESULT_TEXT:-system cleanup failed}
         fi
-        if ((pk_rc == 0)); then
-            local r_id r_status r_bytes r_text
-            while IFS=$'\t' read -r r_id r_status r_bytes r_text; do
-                [[ -n $r_id ]] || continue
-                R_STATUS[$r_id]=$r_status
-                R_BYTES[$r_id]=${r_bytes:-0}
-                R_TEXT[$r_id]=$r_text
-            done <<< "$sys_out"
-            for id in "${sys_ids[@]}"; do
-                if [[ -z ${R_STATUS[$id]:-} ]]; then
-                    R_STATUS[$id]=failed
-                    R_BYTES[$id]=0
-                    R_TEXT[$id]="no result from admin helper"
-                fi
-            done
-        else
-            for id in "${sys_ids[@]}"; do
-                R_STATUS[$id]=failed
-                R_BYTES[$id]=0
-                if ((pk_rc == 126)); then
-                    R_TEXT[$id]="admin authorization failed"
-                elif ((pk_rc == 124)); then
-                    R_TEXT[$id]="admin authorization timed out"
-                elif ((pk_rc == 127)); then
-                    R_TEXT[$id]="pkexec unavailable"
-                else
-                    R_TEXT[$id]="admin helper failed"
-                fi
-            done
-        fi
-    fi
+    done
 
     local first=1 total=0 cleaned=0 skipped=0 failed=0 any_failed=0 by st
     printf '{\n  "schema": 1,\n  "items": [\n'

@@ -16,6 +16,8 @@ mkdir -p "$HOME" "$SANDBOX/other"
 
 # shellcheck source=lib/common.sh
 source "$ROOT/lib/common.sh"
+# shellcheck source=lib/clean.sh
+source "$ROOT/lib/clean.sh"
 # shellcheck source=lib/purge.sh
 source "$ROOT/lib/purge.sh"
 # shellcheck source=lib/tools.sh
@@ -31,17 +33,40 @@ case "$OMACLEAN_LOG_FILE" in
 esac
 
 check() { # check <desc> <expected-rc> <cmd...>
-    local desc=$1 want=$2
+    local desc=$1 expected_rc=$2
     shift 2
     local rc=0
     "$@" > /dev/null 2>&1 || rc=$?
-    if [[ $rc -eq $want ]]; then
+    if [[ $rc -eq $expected_rc ]]; then
         printf 'ok   %s\n' "$desc"
     else
-        printf 'FAIL %s (rc=%s, expected %s)\n' "$desc" "$rc" "$want"
+        printf 'FAIL %s (rc=%s, expected %s)\n' "$desc" "$rc" "$expected_rc"
         FAILED=1
     fi
 }
+
+# ── 特权边界：只接受固定 root-owned 程序，不保留脚本提权入口 ──────
+FAKE_ADMIN="$SANDBOX/fake-admin"
+printf '#!/bin/bash\nexit 0\n' > "$FAKE_ADMIN"
+chmod +x "$FAKE_ADMIN"
+check 'accept root-owned system executable' 0 trusted_root_executable /usr/bin/journalctl
+check 'refuse user-owned executable' 1 trusted_root_executable "$FAKE_ADMIN"
+check 'refuse unknown system cleanup item' 2 execute_pkexec_system_item unknown
+check 'remove elevated script entry point' 1 "$ROOT/omaclean" _sys journal
+
+ROOT_GUARD_DIR="$SANDBOX/root-guard"
+ROOT_SOURCE_MARKER="$SANDBOX/root-sourced"
+mkdir -p "$ROOT_GUARD_DIR/lib"
+cp "$ROOT/omaclean" "$ROOT_GUARD_DIR/omaclean"
+printf 'touch -- "%s"\n' "$ROOT_SOURCE_MARKER" > "$ROOT_GUARD_DIR/lib/common.sh"
+root_rc=0
+unshare --user --map-root-user "$ROOT_GUARD_DIR/omaclean" --version > /dev/null 2>&1 || root_rc=$?
+if [[ $root_rc -eq 1 && ! -e $ROOT_SOURCE_MARKER ]]; then
+    printf 'ok   reject root before sourcing user-writable code\n'
+else
+    printf 'FAIL root guard ran after user-writable code (rc=%s)\n' "$root_rc"
+    FAILED=1
+fi
 
 # ── 目标校验 ──────────────────────────────────────────────────
 mkdir -p "$HOME/cache/sub"

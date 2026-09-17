@@ -8,7 +8,7 @@
 - **Panel**
   - `Caches` view: system caches, journals and developer caches with checkboxes and safe defaults preselected (the journal stays unchecked).
   - `Artifacts` view: project build directories (`node_modules`, `target`, `dist`, `.turbo`, …) with `Size` / `Age` sorting and 7-day+ preselection.
-  - `Clean` / `Purge` runs the current selection in place; admin items (pacman cache, journal, tmpfiles) go through the standard polkit password prompt — the terminal is never involved.
+  - `Clean` / `Purge` runs the current selection in place; admin items invoke fixed root-owned system executables through polkit — no user-writable plugin code runs as root.
 - **Keyboard** — `a` select all / none, `r` refresh, `Esc` close.
 - **IPC** for shortcuts: `omarchy-shell zykyaka.omaclean toggle|refresh|clean <ids>|purge`.
 

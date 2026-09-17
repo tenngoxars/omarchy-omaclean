@@ -9,7 +9,7 @@ Arch 上不缺清理脚本，缺的是敢放心跑的。常见脚本上来就是
 
 omaclean 坚持的安全原则：
 
-- 整个程序以普通用户运行，先完成只读扫描与选择，只有最终选中的 `paccache`、`journalctl`、`systemd-tmpfiles` 系统项才请求 sudo；跳过提权后仍可清理用户项；
+- 程序始终以普通用户运行：交互流程只对固定系统程序请求 sudo；非交互流程通过 polkit 直接执行固定的 root-owned `/usr/bin` 程序，不以 root 加载 omaclean 脚本；
 - 严密的路径安全边界：所有删除目标必须落在允许的根目录内，且不在系统目录与 `/tmp` 之下，符号链接一律跳过；
 - 不整体清空 `~/.cache` 和 `/tmp`：临时文件交给 systemd 的过期策略，用户缓存按已知清单逐项处理；
 - 每次操作写入状态目录的 `omaclean/operations.log`（遵循 `XDG_STATE_HOME`，默认 `~/.local/state`），用 `omaclean history` 查看。
@@ -35,7 +35,7 @@ omaclean clean --dry-run  # 只读扫描，到汇总即止，不进入评审或�
 omaclean clean --select   # 扫描后直接打开行内复选评审
 omaclean clean --trash    # 将回收站纳入可选项（默认保护）
 omaclean clean --json     # 以 JSON 输出扫描结果（只读；供状态栏插件等消费方）
-omaclean clean --exec a,b # 非交互清理指定 id（系统项经 polkit 图形认证提权）
+omaclean clean --exec a,b # 非交互清理指定 id（系统项经 polkit 直接执行固定系统程序）
 omaclean purge            # 行内交互清理项目构建产物（node_modules、target 等）
 omaclean purge --json     # 以 JSON 输出构建产物候选（含默认预选）
 omaclean purge --exec p…  # 非交互清理给定候选路径（仅接受本轮扫描到的候选）

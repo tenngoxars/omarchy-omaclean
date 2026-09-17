@@ -4,7 +4,13 @@
 
 set -euo pipefail
 
-OMACLEAN_VERSION="0.3.0"
+# 必须在加载任何用户可写文件前拒绝 root。
+if [[ ${EUID:-0} -eq 0 ]]; then
+    printf '%s\n' "Run omaclean without sudo. It requests administrator access when needed." >&2
+    exit 1
+fi
+
+OMACLEAN_VERSION="0.3.1"
 
 # Resolve real script directory across symlinks (e.g. ~/.local/bin/omaclean)
 _src=${BASH_SOURCE[0]}
@@ -25,11 +31,6 @@ source "$OMACLEAN_ROOT/lib/purge.sh"
 # shellcheck source=lib/tools.sh
 source "$OMACLEAN_ROOT/lib/tools.sh"
 
-# Refuse running entire script as root (the internal _sys helper is the only
-# mode that runs elevated, and only when entered via pkexec).
-if [[ ${EUID:-0} -eq 0 && ${1:-} != _sys ]]; then
-    die "Run omaclean without sudo. It requests administrator access when needed."
-fi
 
 usage() {
     cat << EOF
@@ -200,9 +201,6 @@ fi
 case "$cmd" in
     clean)
         cmd_clean "$@"
-        ;;
-    _sys)
-        cmd_sys_exec "$@"
         ;;
     purge)
         cmd_purge "$@"
