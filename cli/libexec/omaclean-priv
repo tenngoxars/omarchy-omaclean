@@ -1,0 +1,48 @@
+#!/bin/bash
+# omaclean 特权组件：把 id 映射成固定的系统清理命令，只由 pkexec 以 root 调用。
+#
+# 安装：`omaclean install-privileges` 以 root:root 0755 落到
+# /usr/local/lib/omaclean/omaclean-priv，polkit action com.omaclean.clean 通过
+# org.freedesktop.policykit.exec.path 注解绑定到本文件。CLI 侧只传 id，
+# 命令与参数全部在这里决定，跨特权边界不再传递任何命令。
+set -euo pipefail
+
+readonly PRIV_PACCACHE_BIN=/usr/bin/paccache
+readonly PRIV_JOURNALCTL_BIN=/usr/bin/journalctl
+readonly PRIV_TMPFILES_BIN=/usr/bin/systemd-tmpfiles
+# 与 lib/clean.sh 的 CLEAN_JOURNAL_LIMIT（100MiB）同源，此处是唯一生效值。
+readonly PRIV_JOURNAL_LIMIT=100M
+
+declare -ga PRIV_COMMAND=()
+
+priv_command() { # <id>：填充 PRIV_COMMAND 固定 argv；未知 id 返回 2
+    case "${1:-}" in
+        pacman) PRIV_COMMAND=("$PRIV_PACCACHE_BIN" -rk2) ;;
+        journal) PRIV_COMMAND=("$PRIV_JOURNALCTL_BIN" "--vacuum-size=$PRIV_JOURNAL_LIMIT") ;;
+        tmp) PRIV_COMMAND=("$PRIV_TMPFILES_BIN" --clean) ;;
+        *)
+            PRIV_COMMAND=()
+            return 2
+            ;;
+    esac
+}
+
+priv_main() { # <id>：只接受一个已知 id，root 下执行映射出的固定命令
+    if [[ ${EUID:-0} -ne 0 ]]; then
+        printf '%s\n' "omaclean-priv must run as root" >&2
+        return 1
+    fi
+    if (($# != 1)); then
+        printf '%s\n' "omaclean-priv takes exactly one item id" >&2
+        return 2
+    fi
+    if ! priv_command "$1"; then
+        printf 'omaclean-priv: unknown item id: %s\n' "$1" >&2
+        return 2
+    fi
+    exec "${PRIV_COMMAND[@]}"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    priv_main "$@"
+fi

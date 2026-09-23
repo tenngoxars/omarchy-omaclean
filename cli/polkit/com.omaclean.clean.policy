@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD polkit Policy Configuration 1.0//EN" "http://www.freedesktop.org/software/polkit/policyconfig-1.dtd">
+<!--
+  安装到 /usr/share/polkit-1/actions/com.omaclean.clean.policy。
+  exec.path 注解把本 action 绑定到 root 属主的 omaclean-priv：pkexec 只在这个
+  路径上用本 action，命令与参数由该组件按 id 自行映射。
+-->
+<policyconfig>
+  <vendor>omaclean</vendor>
+  <vendor_url>https://github.com/tenngoxars/omarchy-omaclean</vendor_url>
+
+  <action id="com.omaclean.clean">
+    <description>Clean system caches and logs</description>
+    <message>Authentication is required to clean system caches and logs</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/lib/omaclean/omaclean-priv</annotate>
+  </action>
+</policyconfig>

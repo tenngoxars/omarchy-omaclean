@@ -208,9 +208,21 @@ Panel {
     return out
   }
 
+  // 首个失败项的说明（如「admin component missing — run: omaclean install-privileges」），
+  // 存在时整条状态行让给它，避免被右侧提示和省略号截断。
+  readonly property string failNote: {
+    var list = root.lastExec && root.lastExec.items
+    if (!list) return ""
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i].status === "failed" && list[i].text) return list[i].text
+    }
+    return ""
+  }
+
   readonly property string statusText: {
     if (root.execRunning) return root.view === "artifacts" ? "Purging…" : "Cleaning…"
     if (root.lastExec && root.lastExec.error) return "Cleanup failed"
+    if (root.failNote !== "") return root.failNote
     if (root.lastExec && (root.lastExec.cleaned !== undefined || root.lastExec.purged !== undefined)) {
       var isPurge = root.lastExec.cleaned === undefined
       var count = isPurge ? root.lastExec.purged : root.lastExec.cleaned
@@ -583,7 +595,7 @@ Panel {
           id: hintKeys
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          text: "a all · r refresh · Esc close"
+          text: root.failNote !== "" ? "" : "a all · r refresh · Esc close"
           color: root.faint
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

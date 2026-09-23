@@ -9,7 +9,7 @@ Arch 上不缺清理脚本，缺的是敢放心跑的。常见脚本上来就是
 
 omaclean 坚持的安全原则：
 
-- 程序始终以普通用户运行：交互流程只对固定系统程序请求 sudo；非交互流程通过 polkit 直接执行固定的 root-owned `/usr/bin` 程序，不以 root 加载 omaclean 脚本；
+- 程序始终以普通用户运行：交互流程只对固定系统程序请求 sudo；非交互流程（面板里的 Clean）只把 `pacman`、`journal`、`tmp` 之一交给 root 属主的特权组件 `omaclean-priv`，命令与参数由该组件按 id 自行映射，经 polkit action `com.omaclean.clean` 认证执行——root 进程不加载任何用户可写的 omaclean 脚本；
 - 严密的路径安全边界：所有删除目标必须落在允许的根目录内，且不在系统目录与 `/tmp` 之下，符号链接一律跳过；
 - 不整体清空 `~/.cache` 和 `/tmp`：临时文件交给 systemd 的过期策略，用户缓存按已知清单逐项处理；
 - 每次操作写入状态目录的 `omaclean/operations.log`（遵循 `XDG_STATE_HOME`，默认 `~/.local/state`），用 `omaclean history` 查看。
@@ -25,6 +25,20 @@ ln -s ~/.config/omarchy/plugins/zykyaka.omaclean/cli/omaclean ~/.local/bin/omacl
 
 依赖：`gum`、`fzf`、`pacman-contrib`（`paccache`），Omarchy 已预装；其他 Arch 发行版执行 `sudo pacman -S gum fzf pacman-contrib`。
 
+系统清理项（pacman 缓存、journal、过期 tmpfiles）还要装一次特权组件：它把三个 id 映射成固定命令，以 root 安装后用户不可写，pkexec 也只认这一个路径。
+
+```bash
+omaclean install-privileges   # sudo 一次；写入 /usr/local/lib/omaclean/ 与 /usr/share/polkit-1/actions/
+```
+
+没装时只有系统项会失败并提示这行命令，用户缓存、构建产物不受影响。卸载：
+
+```bash
+sudo rm -f /usr/local/lib/omaclean/omaclean-priv /usr/share/polkit-1/actions/com.omaclean.clean.policy
+```
+
+交互流程（终端里的 `omaclean clean`）仍走 sudo，不经这套组件：sudo 授权后用户本就能执行任意命令，那条路径上不存在白名单边界，也没有假装有。
+
 ## 使用
 
 ```bash
@@ -35,13 +49,14 @@ omaclean clean --dry-run  # 只读扫描，到汇总即止，不进入评审或�
 omaclean clean --select   # 扫描后直接打开行内复选评审
 omaclean clean --trash    # 将回收站纳入可选项（默认保护）
 omaclean clean --json     # 以 JSON 输出扫描结果（只读；供状态栏插件等消费方）
-omaclean clean --exec a,b # 非交互清理指定 id（系统项经 polkit 直接执行固定系统程序）
+omaclean clean --exec a,b # 非交互清理指定 id（系统项只把 id 交给特权组件，经 polkit 认证执行）
 omaclean purge            # 行内交互清理项目构建产物（node_modules、target 等）
 omaclean purge --json     # 以 JSON 输出构建产物候选（含默认预选）
 omaclean purge --exec p…  # 非交互清理给定候选路径（仅接受本轮扫描到的候选）
 omaclean purge --dry-run  # 列出全部候选与默认选择
 omaclean purge --age 0    # 将全部候选设为默认选中
 omaclean remove           # 卸载软件（Omarchy 包选择器或 pacman 原生确认）
+omaclean install-privileges  # 安装特权组件（系统项提权用，sudo 一次）
 omaclean history          # 查看清理操作审计日志
 ```
 

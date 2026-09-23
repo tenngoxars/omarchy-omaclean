@@ -10,7 +10,7 @@ if [[ ${EUID:-0} -eq 0 ]]; then
     exit 1
 fi
 
-OMACLEAN_VERSION="0.3.1"
+OMACLEAN_VERSION="0.4.0"
 
 # Resolve real script directory across symlinks (e.g. ~/.local/bin/omaclean)
 _src=${BASH_SOURCE[0]}
@@ -43,6 +43,7 @@ Commands:
   analyze [--dry-run] [--select] [--trash] [--json]  Alias of clean
   purge [--dry-run] [--age N]                        Remove project build artifacts
   remove                                             Uninstall system packages
+  install-privileges                                 Install the root-owned admin component
   history [N]                                        View past cleanup operations (default: 50)
   --help, -h                                         Show this help message
   --version, -v                                      Print version
@@ -210,6 +211,9 @@ case "$cmd" in
         ;;
     remove)
         cmd_remove "$@"
+        ;;
+    install-privileges)
+        cmd_install_privileges "$@"
         ;;
     history)
         cmd_history "$@"

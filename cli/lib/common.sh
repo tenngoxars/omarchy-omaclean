@@ -57,6 +57,8 @@ has_cmd() {
 }
 
 # 交互流程的固定系统命令：已是 root 时直接执行，否则走 sudo。
+# 注意：sudo 授权后用户本就能执行任意命令，这条路径不构成白名单边界；
+# 非交互流程（--exec）改由 root 属主的特权组件决定命令，见下方常量。
 as_root() {
     if [[ ${EUID:-0} -eq 0 ]]; then
         "$@"
@@ -64,6 +66,13 @@ as_root() {
         sudo "$@"
     fi
 }
+
+# ── 特权组件 ──────────────────────────────────────────────────
+# root 属主的固定命令映射器，及绑定它的 polkit action。只有
+# install-privileges 以 root 写这两个路径；CLI 侧只传 id，不传命令。
+readonly OMACLEAN_PRIV_HELPER=/usr/local/lib/omaclean/omaclean-priv
+readonly OMACLEAN_PRIV_POLICY=/usr/share/polkit-1/actions/com.omaclean.clean.policy
+readonly OMACLEAN_PRIV_ACTION=com.omaclean.clean
 
 require_cmds() {
     local missing=() c

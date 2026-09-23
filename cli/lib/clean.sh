@@ -7,6 +7,8 @@ fi
 OMACLEAN_CLEAN_LOADED=1
 
 readonly CLEAN_THRESHOLD=$((1024 * 1024))
+# journal 保留上限：交互流程（sudo）直接用此值；--exec 以特权组件内的
+# PRIV_JOURNAL_LIMIT 为准，此处仅用于估算与结果展示。
 readonly CLEAN_JOURNAL_LIMIT=$((100 * 1024 * 1024))
 
 declare -ga CLEAN_IDS=()
@@ -601,17 +603,15 @@ execute_clean_item() {
 
 # ── 非交互执行（供状态栏插件等消费方）─────────────────────────
 
-# 系统项只允许映射到固定的 root-owned 程序；root 进程不加载本项目脚本。
+# 系统项只把 id 交给 root 属主的 OMACLEAN_PRIV_HELPER：命令与参数由该组件按 id
+# 映射（polkit action 绑定到它），本脚本不再向 pkexec 传递任何命令。
 execute_pkexec_system_item() {
     local id=$1 target rc=0
-    local -a command=()
     CLEAN_RESULT_BYTES=0
     CLEAN_RESULT_TEXT=""
 
     case "$id" in
-        pacman) command=("$CLEAN_PACCACHE_BIN" -rk2) ;;
-        journal) command=("$CLEAN_JOURNALCTL_BIN" "--vacuum-size=${CLEAN_JOURNAL_LIMIT}B") ;;
-        tmp) command=("$CLEAN_TMPFILES_BIN" --clean) ;;
+        pacman | journal | tmp) ;;
         *)
             CLEAN_RESULT_TEXT="unknown system item"
             return 2
@@ -619,14 +619,19 @@ execute_pkexec_system_item() {
     esac
     CLEAN_RESULT_BYTES=${CLEAN_BYTES[$id]:-0}
 
-    for target in "$CLEAN_TIMEOUT_BIN" "$CLEAN_PKEXEC_BIN" "${command[0]}"; do
-        if ! trusted_root_executable "$target"; then
-            CLEAN_RESULT_TEXT="trusted admin executable unavailable"
-            return 127
+    for target in "$CLEAN_TIMEOUT_BIN" "$CLEAN_PKEXEC_BIN" "$OMACLEAN_PRIV_HELPER"; do
+        if trusted_root_executable "$target"; then
+            continue
         fi
+        if [[ $target == "$OMACLEAN_PRIV_HELPER" ]]; then
+            CLEAN_RESULT_TEXT="admin component missing — run: omaclean install-privileges"
+        else
+            CLEAN_RESULT_TEXT="trusted admin executable unavailable"
+        fi
+        return 127
     done
 
-    "$CLEAN_TIMEOUT_BIN" 120 "$CLEAN_PKEXEC_BIN" "${command[@]}" > /dev/null 2>&1 || rc=$?
+    "$CLEAN_TIMEOUT_BIN" 120 "$CLEAN_PKEXEC_BIN" "$OMACLEAN_PRIV_HELPER" "$id" > /dev/null 2>&1 || rc=$?
     case "$rc" in
         0)
             case "$id" in
@@ -652,7 +657,7 @@ exec_result_line() { # id status bytes text
         "$(json_escape "$1")" "$2" "${3:-0}" "$(json_escape "$(human_size "${3:-0}")")" "$(json_escape "${4:-}")"
 }
 
-# 按 id 列表执行清理：用户项就地执行；系统项直接提权固定系统程序。
+# 按 id 列表执行清理：用户项就地执行；系统项只把 id 交给 root 属主的特权组件提权执行。
 # 只输出 JSON 结果；存在失败项时退出码非零。
 cmd_clean_exec() {
     local exec_ids=$1 allow_trash=$2

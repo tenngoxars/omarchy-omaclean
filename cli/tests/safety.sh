@@ -54,6 +54,40 @@ check 'refuse user-owned executable' 1 trusted_root_executable "$FAKE_ADMIN"
 check 'refuse unknown system cleanup item' 2 execute_pkexec_system_item unknown
 check 'remove elevated script entry point' 1 "$ROOT/omaclean" _sys journal
 
+# ── 特权组件：白名单映射由 root 属主的 omaclean-priv 决定 ───────
+# shellcheck source=libexec/omaclean-priv
+source "$ROOT/libexec/omaclean-priv"
+
+priv_expect() { # <id> <expected argv>
+    local id=$1 expected=$2
+    if priv_command "$id" && [[ ${PRIV_COMMAND[*]} == "$expected" ]]; then
+        printf 'ok   privileged helper maps %s → %s\n' "$id" "$expected"
+    else
+        printf 'FAIL privileged helper mapping for %s: %s\n' "$id" "${PRIV_COMMAND[*]}"
+        FAILED=1
+    fi
+}
+priv_expect pacman '/usr/bin/paccache -rk2'
+priv_expect journal '/usr/bin/journalctl --vacuum-size=100M'
+priv_expect tmp '/usr/bin/systemd-tmpfiles --clean'
+check 'refuse unknown privileged id' 2 priv_command bogus
+if ((${EUID:-0} != 0)); then
+    check 'privileged helper refuses non-root execution' 1 "$ROOT/libexec/omaclean-priv" pacman
+fi
+
+policy_target=$(sed -n 's/.*key="org.freedesktop.policykit.exec.path">\([^<]*\)<.*/\1/p' \
+    "$ROOT/polkit/com.omaclean.clean.policy")
+if [[ $policy_target == "$OMACLEAN_PRIV_HELPER" ]] &&
+    grep -q "<action id=\"$OMACLEAN_PRIV_ACTION\">" "$ROOT/polkit/com.omaclean.clean.policy" &&
+    grep -q '<allow_any>no</allow_any>' "$ROOT/polkit/com.omaclean.clean.policy" &&
+    grep -q '<allow_inactive>no</allow_inactive>' "$ROOT/polkit/com.omaclean.clean.policy" &&
+    grep -q '<allow_active>auth_admin_keep</allow_active>' "$ROOT/polkit/com.omaclean.clean.policy"; then
+    printf 'ok   polkit action %s binds to %s and requires authentication\n' "$OMACLEAN_PRIV_ACTION" "$policy_target"
+else
+    printf 'FAIL polkit policy/CLI drift: policy=%s cli=%s\n' "${policy_target:-none}" "$OMACLEAN_PRIV_HELPER"
+    FAILED=1
+fi
+
 ROOT_GUARD_DIR="$SANDBOX/root-guard"
 ROOT_SOURCE_MARKER="$SANDBOX/root-sourced"
 mkdir -p "$ROOT_GUARD_DIR/lib"
