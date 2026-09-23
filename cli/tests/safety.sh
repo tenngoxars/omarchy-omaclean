@@ -77,14 +77,26 @@ fi
 
 policy_target=$(sed -n 's/.*key="org.freedesktop.policykit.exec.path">\([^<]*\)<.*/\1/p' \
     "$ROOT/polkit/com.omaclean.clean.policy")
-if [[ $policy_target == "$OMACLEAN_PRIV_HELPER" ]] &&
+helper_hash=$(sha256sum "$ROOT/libexec/omaclean-priv")
+helper_hash=${helper_hash%% *}
+if [[ $policy_target == "/usr/local/lib/omaclean/omaclean-priv-$helper_hash" ]] &&
     grep -q "<action id=\"$OMACLEAN_PRIV_ACTION\">" "$ROOT/polkit/com.omaclean.clean.policy" &&
     grep -q '<allow_any>no</allow_any>' "$ROOT/polkit/com.omaclean.clean.policy" &&
     grep -q '<allow_inactive>no</allow_inactive>' "$ROOT/polkit/com.omaclean.clean.policy" &&
     grep -q '<allow_active>auth_admin_keep</allow_active>' "$ROOT/polkit/com.omaclean.clean.policy"; then
-    printf 'ok   polkit action %s binds to %s and requires authentication\n' "$OMACLEAN_PRIV_ACTION" "$policy_target"
+    printf 'ok   polkit action %s binds to the reviewed helper\n' "$OMACLEAN_PRIV_ACTION"
 else
-    printf 'FAIL polkit policy/CLI drift: policy=%s cli=%s\n' "${policy_target:-none}" "$OMACLEAN_PRIV_HELPER"
+    printf 'FAIL polkit policy/helper drift: policy=%s\n' "${policy_target:-none}"
+    FAILED=1
+fi
+check 'checkout cannot request sudo installation' 1 "$ROOT/omaclean" install-privileges
+installer_rc=0
+installer_output=$(unshare --user --map-root-user bash "$ROOT/install-privileges" \
+    0000000000000000000000000000000000000000 2>&1) || installer_rc=$?
+if [[ $installer_rc == 1 && $installer_output == *'只接受 /root 中的独立检出'* ]]; then
+    printf 'ok   privileged installer rejects mutable checkout\n'
+else
+    printf 'FAIL privileged installer accepted mutable checkout: %s\n' "$installer_output"
     FAILED=1
 fi
 

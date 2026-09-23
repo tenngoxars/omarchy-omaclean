@@ -1,9 +1,8 @@
 #!/bin/bash
 # omaclean 特权组件：把 id 映射成固定的系统清理命令，只由 pkexec 以 root 调用。
 #
-# 安装：`omaclean install-privileges` 以 root:root 0755 落到
-# /usr/local/lib/omaclean/omaclean-priv，polkit action com.omaclean.clean 通过
-# org.freedesktop.policykit.exec.path 注解绑定到本文件。CLI 侧只传 id，
+# 仅由经过核验的 root 属主安装器发布到版本化路径；
+# polkit action com.omaclean.clean 的 exec.path 注解绑定到该路径。CLI 侧只传 id，
 # 命令与参数全部在这里决定，跨特权边界不再传递任何命令。
 set -euo pipefail
 

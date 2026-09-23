@@ -208,7 +208,7 @@ Panel {
     return out
   }
 
-  // 首个失败项的说明（如「admin component missing — run: omaclean install-privileges」），
+  // 首个失败项的说明（如「admin component missing — install the reviewed privileged artifact」），
   // 存在时整条状态行让给它，避免被右侧提示和省略号截断。
   readonly property string failNote: {
     var list = root.lastExec && root.lastExec.items

@@ -1,0 +1,67 @@
+#!/bin/bash
+# 只能从 /root 中按受审查提交检出的制品执行；不读取用户插件目录。
+set -euo pipefail
+PATH=/usr/bin:/bin
+
+readonly HELPER_SHA=55f8c90b69ce7b88df5cd9d00c566d0757a8acbdbeccbd3c71ace96d708a4f8a
+readonly POLICY_SHA=ad84d6ab05e76d89a08ad9ca20661de45112d8f0b6d537f169038a0259933ad1
+readonly HELPER_DIR=/usr/local/lib/omaclean
+readonly HELPER_PATH="$HELPER_DIR/omaclean-priv-$HELPER_SHA"
+readonly POLICY_DIR=/usr/share/polkit-1/actions
+readonly POLICY_PATH="$POLICY_DIR/com.omaclean.clean.policy"
+
+fail() { printf 'omaclean: %s\n' "$*" >&2; exit 1; }
+
+[[ $EUID == 0 && $# == 1 && $1 =~ ^[0-9a-f]{40}$ ]] || fail '需要 root 权限和独立核对过的 40 位提交 SHA'
+root=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+[[ $root == /root/omaclean-install-* && ! -L $root ]] || fail '只接受 /root 中的独立检出'
+[[ $(git -C "$root" rev-parse --verify HEAD) == "$1" ]] || fail '检出与受审查提交不符'
+tree_status=$(git -C "$root" status --porcelain --untracked-files=no) || fail '无法验证检出'
+[[ -z $tree_status ]] || fail '检出已修改'
+
+trusted_dir() {
+    local owner mode
+    [[ -d $1 && ! -L $1 ]] || return 1
+    read -r owner mode < <(stat -c '%u %a' -- "$1") || return 1
+    [[ $owner == 0 && $mode =~ ^[0-7]+$ ]] && (( (8#$mode & 0022) == 0 ))
+}
+if ! trusted_dir /root || ! trusted_dir "$root" || ! trusted_dir "$root/cli" ||
+    ! trusted_dir "$root/cli/libexec" || ! trusted_dir "$root/cli/polkit"; then
+    fail '检出目录不受 root 控制'
+fi
+
+helper="$root/cli/libexec/omaclean-priv"
+policy="$root/cli/polkit/com.omaclean.clean.policy"
+[[ -f $helper && ! -L $helper && -f $policy && ! -L $policy ]] || fail '制品缺失或是符号链接'
+
+verify() {
+    local actual
+    actual=$(sha256sum -- "$1") || fail "无法校验 $1"
+    [[ ${actual%% *} == "$2" ]] || fail "制品内容与受审查版本不符: $1"
+}
+verify "$helper" "$HELPER_SHA"
+verify "$policy" "$POLICY_SHA"
+
+trusted_dir /usr/local/lib || fail '特权目标的父目录不受 root 控制'
+if [[ ! -e $HELPER_DIR && ! -L $HELPER_DIR ]]; then
+    install -d -m755 -- "$HELPER_DIR"
+fi
+if ! trusted_dir "$HELPER_DIR" || ! trusted_dir "$POLICY_DIR"; then
+    fail '目标目录不受 root 控制'
+fi
+helper_tmp=$(mktemp "$HELPER_DIR/.omaclean-priv.XXXXXXXX")
+policy_tmp=''
+trap 'rm -f -- "$helper_tmp" "$policy_tmp"' EXIT
+policy_tmp=$(mktemp "$POLICY_DIR/.com.omaclean.clean.XXXXXXXX")
+install -m755 -- "$helper" "$helper_tmp"
+install -m644 -- "$policy" "$policy_tmp"
+verify "$helper_tmp" "$HELPER_SHA"
+verify "$policy_tmp" "$POLICY_SHA"
+
+# policy 是唯一生效开关；旧 helper 保留，新 policy 不会指向尚未安装的版本。
+mv -fT -- "$helper_tmp" "$HELPER_PATH"
+helper_tmp=''
+mv -fT -- "$policy_tmp" "$POLICY_PATH"
+policy_tmp=''
+rm -f -- "$HELPER_DIR/omaclean-priv"
+printf '已安装经过核验的特权组件：%s\n' "$HELPER_PATH"

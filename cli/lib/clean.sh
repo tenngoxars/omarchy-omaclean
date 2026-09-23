@@ -603,10 +603,10 @@ execute_clean_item() {
 
 # ── 非交互执行（供状态栏插件等消费方）─────────────────────────
 
-# 系统项只把 id 交给 root 属主的 OMACLEAN_PRIV_HELPER：命令与参数由该组件按 id
-# 映射（polkit action 绑定到它），本脚本不再向 pkexec 传递任何命令。
+# 系统项只把 id 交给已安装 policy 绑定的 root 属主 helper；
+# 命令与参数由 helper 决定，CLI 不安装特权文件。
 execute_pkexec_system_item() {
-    local id=$1 target rc=0
+    local id=$1 target helper rc=0
     CLEAN_RESULT_BYTES=0
     CLEAN_RESULT_TEXT=""
 
@@ -618,20 +618,30 @@ execute_pkexec_system_item() {
             ;;
     esac
     CLEAN_RESULT_BYTES=${CLEAN_BYTES[$id]:-0}
+    if [[ ! -f $OMACLEAN_PRIV_POLICY || -L $OMACLEAN_PRIV_POLICY ||
+        $(/usr/bin/stat -c '%u:%a' -- "$OMACLEAN_PRIV_POLICY") != 0:644 ]]; then
+        CLEAN_RESULT_TEXT="admin component missing — install the reviewed privileged artifact"
+        return 127
+    fi
+    helper=$(/usr/bin/sed -n 's/.*key="org.freedesktop.policykit.exec.path">\([^<]*\)<.*/\1/p' "$OMACLEAN_PRIV_POLICY")
+    if [[ ! $helper =~ ^/usr/local/lib/omaclean/omaclean-priv-[0-9a-f]{64}$ ]]; then
+        CLEAN_RESULT_TEXT="invalid admin component policy"
+        return 127
+    fi
 
-    for target in "$CLEAN_TIMEOUT_BIN" "$CLEAN_PKEXEC_BIN" "$OMACLEAN_PRIV_HELPER"; do
+    for target in "$CLEAN_TIMEOUT_BIN" "$CLEAN_PKEXEC_BIN" "$helper"; do
         if trusted_root_executable "$target"; then
             continue
         fi
-        if [[ $target == "$OMACLEAN_PRIV_HELPER" ]]; then
-            CLEAN_RESULT_TEXT="admin component missing — run: omaclean install-privileges"
+        if [[ $target == "$helper" ]]; then
+            CLEAN_RESULT_TEXT="admin component missing — install the reviewed privileged artifact"
         else
             CLEAN_RESULT_TEXT="trusted admin executable unavailable"
         fi
         return 127
     done
 
-    "$CLEAN_TIMEOUT_BIN" 120 "$CLEAN_PKEXEC_BIN" "$OMACLEAN_PRIV_HELPER" "$id" > /dev/null 2>&1 || rc=$?
+    "$CLEAN_TIMEOUT_BIN" 120 "$CLEAN_PKEXEC_BIN" "$helper" "$id" > /dev/null 2>&1 || rc=$?
     case "$rc" in
         0)
             case "$id" in

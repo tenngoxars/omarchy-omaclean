@@ -25,17 +25,7 @@ ln -s ~/.config/omarchy/plugins/zykyaka.omaclean/cli/omaclean ~/.local/bin/omacl
 
 依赖：`gum`、`fzf`、`pacman-contrib`（`paccache`），Omarchy 已预装；其他 Arch 发行版执行 `sudo pacman -S gum fzf pacman-contrib`。
 
-系统清理项（pacman 缓存、journal、过期 tmpfiles）还要装一次特权组件：它把三个 id 映射成固定命令，以 root 安装后用户不可写，pkexec 也只认这一个路径。
-
-```bash
-omaclean install-privileges   # sudo 一次；写入 /usr/local/lib/omaclean/ 与 /usr/share/polkit-1/actions/
-```
-
-没装时只有系统项会失败并提示这行命令，用户缓存、构建产物不受影响。卸载：
-
-```bash
-sudo rm -f /usr/local/lib/omaclean/omaclean-priv /usr/share/polkit-1/actions/com.omaclean.clean.policy
-```
+系统清理项（pacman 缓存、journal、过期 tmpfiles）需从独立核对过的完整提交 SHA 安装特权组件，不能由用户可写的插件目录调用 `sudo install`。安装、升级和卸载步骤见[插件仓库的安装说明](../README.md#安装)。未安装时只有系统项不可用，普通用户清理不受影响。
 
 交互流程（终端里的 `omaclean clean`）仍走 sudo，不经这套组件：sudo 授权后用户本就能执行任意命令，那条路径上不存在白名单边界，也没有假装有。
 
@@ -56,7 +46,6 @@ omaclean purge --exec p…  # 非交互清理给定候选路径（仅接受本�
 omaclean purge --dry-run  # 列出全部候选与默认选择
 omaclean purge --age 0    # 将全部候选设为默认选中
 omaclean remove           # 卸载软件（Omarchy 包选择器或 pacman 原生确认）
-omaclean install-privileges  # 安装特权组件（系统项提权用，sudo 一次）
 omaclean history          # 查看清理操作审计日志
 ```
 

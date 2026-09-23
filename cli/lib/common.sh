@@ -67,10 +67,8 @@ as_root() {
     fi
 }
 
-# ── 特权组件 ──────────────────────────────────────────────────
-# root 属主的固定命令映射器，及绑定它的 polkit action。只有
-# install-privileges 以 root 写这两个路径；CLI 侧只传 id，不传命令。
-readonly OMACLEAN_PRIV_HELPER=/usr/local/lib/omaclean/omaclean-priv
+# polkit policy 由受审查的独立制品安装，CLI 只读取其 root 属主的
+# exec.path 并传递 id；不从插件目录安装特权代码。
 readonly OMACLEAN_PRIV_POLICY=/usr/share/polkit-1/actions/com.omaclean.clean.policy
 readonly OMACLEAN_PRIV_ACTION=com.omaclean.clean
 
