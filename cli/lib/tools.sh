@@ -1,5 +1,4 @@
 #!/bin/bash
-# remove / history 子命令（analyze 与 clean 共用扫描引擎，实现见 clean.sh）。
 
 if [[ ${OMACLEAN_TOOLS_LOADED:-} ]]; then
     return 0
@@ -12,7 +11,6 @@ cmd_remove() {
         omarchy pkg remove
         return
     fi
-    # 独立回退：没有 Omarchy 时使用 pacman 自带的事务确认。
     has_cmd pacman || die "pacman not found"
     local pkgs
     pkgs=$(pacman -Qqe | fzf --multi \

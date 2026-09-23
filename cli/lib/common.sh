@@ -1,12 +1,10 @@
 #!/bin/bash
-# omaclean 公共函数：输出、视觉体系、尺寸换算、安全路径校验与操作日志。
 # shellcheck disable=SC2034
 if [[ ${OMACLEAN_COMMON_LOADED:-} ]]; then
     return 0
 fi
 OMACLEAN_COMMON_LOADED=1
 
-# ── 颜色定义（尊重 NO_COLOR 与 dumb 终端）──────────────────────
 omaclean_color=0
 if [[ -n "${NO_COLOR:-}" ]]; then
     omaclean_color=0
@@ -31,7 +29,6 @@ fi
 unset omaclean_color
 
 # shellcheck disable=SC2034
-# ── 视觉符号 ──────────────────────────────────────────────────
 readonly ICON_ARROW="➤"
 readonly ICON_SUCCESS="✓"
 readonly ICON_SKIP="◎"
@@ -56,9 +53,6 @@ has_cmd() {
     command -v -- "$1" > /dev/null 2>&1
 }
 
-# 交互流程的固定系统命令：已是 root 时直接执行，否则走 sudo。
-# 注意：sudo 授权后用户本就能执行任意命令，这条路径不构成白名单边界；
-# 非交互流程（--exec）改由 root 属主的特权组件决定命令，见下方常量。
 as_root() {
     if [[ ${EUID:-0} -eq 0 ]]; then
         "$@"
@@ -67,8 +61,6 @@ as_root() {
     fi
 }
 
-# polkit policy 由受审查的独立制品安装，CLI 只读取其 root 属主的
-# exec.path 并传递 id；不从插件目录安装特权代码。
 readonly OMACLEAN_PRIV_POLICY=/usr/share/polkit-1/actions/com.omaclean.clean.policy
 readonly OMACLEAN_PRIV_ACTION=com.omaclean.clean
 
@@ -80,7 +72,6 @@ require_cmds() {
     ((${#missing[@]} == 0)) || die "Missing required command(s): ${missing[*]}"
 }
 
-# ── 品牌 Banner 与系统状态 ────────────────────────────────────
 show_brand_banner() {
     echo ""
     echo -e "${BLUE}  ___  _ __ ___   ___  | | ___ ${NC}"
@@ -94,7 +85,6 @@ show_brand_banner() {
     echo ""
 }
 
-# ── 汇总横幅（70 宽实线汇总块）──────────────────
 print_summary_block() {
     local heading="$1"
     shift
@@ -119,8 +109,6 @@ print_summary_block() {
     echo "$divider"
 }
 
-# ── 尺寸换算 ──────────────────────────────────────────────────
-# 字节转人类可读（IEC，例如 1.2GiB）
 human_size() {
     local bytes=${1:-0}
     [[ $bytes =~ ^[0-9]+$ ]] || bytes=0
@@ -158,8 +146,6 @@ format_home_path() {
     fi
 }
 
-# ── JSON 输出 ─────────────────────────────────────────────────
-# 转义为 JSON 字符串字面量内容（不含外围引号）
 json_escape() {
     local s=${1//\\/\\\\}
     s=${s//\"/\\\"}
@@ -169,7 +155,6 @@ json_escape() {
     printf '%s' "$s"
 }
 
-# ── 分段渲染（Section）────────────────────────────────────────
 start_section() {
     local title="$1"
     echo ""
@@ -184,7 +169,6 @@ end_step() {
     [[ -t 1 ]] && printf '\r\033[K'
 }
 
-# ── 终端键盘输入（用于极速主菜单交互）────────────────────────
 read_key() {
     local key rest
     IFS= read -r -s -n 1 key || { echo "QUIT"; return; }
@@ -207,7 +191,6 @@ read_key() {
         return
     fi
     case "$key" in
-        # read -n 会把换行当分隔符吃掉，回车到来时 key 为空串
         "" | $'\n' | $'\r') echo "ENTER" ;;
         ' ') echo "SPACE" ;;
         'a' | 'A') echo "ALL" ;;
@@ -222,14 +205,9 @@ read_key() {
     esac
 }
 
-# ── 行内菜单（复选列表，仅更新变化行，隐藏光标）────────────────
-# 菜单块固定 6+N 行：空行、标题、空行、N 条条目、空行、提示、空行。
-# 画完后光标停在块末空行，先把它存成锚点（DECSC），重画时一律从锚点定位，
-# 不做累计相对位移，避免一行误差把菜单推出屏幕。
 inline_menu_anchor() { printf '\0337'; }
 inline_menu_return() { printf '\0338'; }
 
-# 定位到锚点上方第 idx 条（0 基）条目所在行并清除该行
 inline_menu_goto_item() {
     local item_count=$1 idx=$2
     printf '\0338'
@@ -266,7 +244,6 @@ inline_menu_swap_cursor() { # count from to checked_name labels_name
     inline_menu_repaint_item "$1" "$3" 1 "${_checked[$3]:-0}" "${_labels[$3]}"
 }
 
-# 返回 0=已确认且至少一项，1=未选任何项，2=用户取消
 prompt_inline_checkbox() {
     local header=$1
     local -n _checked=$2
@@ -354,7 +331,6 @@ prompt_inline_checkbox() {
     done
 }
 
-# ── 安全删除 ──────────────────────────────────────────────────
 assert_deletable() {
     local path=$1 root=$2
     [[ -n $path && -n $root ]] || return 1
@@ -427,7 +403,6 @@ clear_dir_contents() {
     return 0
 }
 
-# ── 操作日志 ──────────────────────────────────────────────────
 OMACLEAN_STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omaclean"
 OMACLEAN_LOG_FILE="$OMACLEAN_STATE_DIR/operations.log"
 

@@ -1,5 +1,4 @@
 #!/bin/bash
-# 回归 clean 的 Scan → Review → Clean 顺序与选择语义。
 
 set -euo pipefail
 
@@ -51,7 +50,6 @@ fail() {
     exit 1
 }
 
-# dry-run 必须只扫描，不能触发评审、sudo 或删除。
 dry_output=$("$ROOT/omaclean" clean --dry-run)
 grep -q 'Scan Your System' <<< "$dry_output" || fail 'dry-run did not scan'
 grep -q 'Scan complete - no changes made' <<< "$dry_output" || fail 'dry-run summary missing'
@@ -67,20 +65,17 @@ grep -q 'variable' <<< "$dry_output" && fail 'scan still reports unknown variabl
 grep -q 'pnpm store' <<< "$dry_output" && fail 'scan reports the whole pnpm store as junk'
 printf 'ok   dry-run is scan-only\n'
 
-# tmpfiles 只在 dry-run 确认具体目标后才列为垃圾。
 mkdir -p "$HOME/expired"
 dd if=/dev/zero of="$HOME/expired/payload" bs=1M count=2 status=none
 tmp_output=$(TMPFILES_TARGET="$HOME/expired" "$ROOT/omaclean" clean --dry-run)
 grep -q 'Expired temporary files · 2.0MiB' <<< "$tmp_output" || fail 'confirmed tmpfiles target was not measured'
 printf 'ok   tmpfiles only reports confirmed reclaimable data\n'
 
-# 空选择不是取消，必须给出准确提示。
 empty_output=$(OMACLEAN_FORCE_EMPTY_SELECTION=1 script -qefc "$ROOT/omaclean clean --select" /dev/null)
 grep -q 'No cleanup items selected' <<< "$empty_output" || fail 'empty selection was not reported'
 grep -q 'Cleanup cancelled' <<< "$empty_output" && fail 'empty selection was misreported as cancellation'
 printf 'ok   empty review selection is reported accurately\n'
 
-# --select 必须先输出扫描汇总，再打开评审；只执行用户选择的 AUR 项。
 flow_output=$(printf '\r' | script -qefc "$ROOT/omaclean clean --select" /dev/null)
 scan_line=$(grep -n -m1 'Scan complete' <<< "$flow_output" | cut -d: -f1)
 review_line=$(grep -n -m1 'Review cleanup items' <<< "$flow_output" | cut -d: -f1)
@@ -91,7 +86,6 @@ grep -q 'systemd journal · freed' <<< "$flow_output" && fail 'irreversible jour
 grep -q 'Cleanup complete' <<< "$flow_output" || fail 'cleanup summary missing'
 printf 'ok   scan precedes review and selected cleanup\n'
 
-# analyze：回车进挑选列表，只清勾选项，不请求 sudo。
 dd if=/dev/zero of="$HOME/.cache/yay/payload" bs=1M count=2 status=none
 rm -f "$SUDO_LOG"
 pick_output=$(printf '\r\r' | script -qefc "$ROOT/omaclean analyze" /dev/null)
@@ -103,7 +97,6 @@ review_p=$(grep -n -m1 'Review cleanup items' <<< "$pick_output" | cut -d: -f1)
 [[ -d $HOME/.cache/yay && ! -e $HOME/.cache/yay/payload ]] || fail 'picked item was not cleaned'
 printf 'ok   analyze reports, then cleans only the picked items\n'
 
-# analyze：A = 全部清理；系统项先问 sudo，跳过时仍清用户项。
 dd if=/dev/zero of="$HOME/.cache/yay/payload" bs=1M count=2 status=none
 rm -f "$SUDO_LOG"
 all_output=$(printf '2\r' | script -qefc "$ROOT/omaclean analyze" /dev/null)
@@ -113,7 +106,6 @@ grep -q 'Skipped system cleanup' <<< "$all_output" || fail 'system items were cl
 grep -q 'Cleanup complete' <<< "$all_output" || fail 'analyze summary missing'
 printf 'ok   analyze cleans everything on A and skips sudo on request\n'
 
-# 推荐项包含系统任务时，跳过 sudo 后仍须继续清理用户项。
 dd if=/dev/zero of="$HOME/.cache/yay/payload" bs=1M count=2 status=none
 rm -f "$SUDO_LOG"
 export OMACLEAN_TEST_ROOT="$ROOT"

@@ -1,5 +1,4 @@
 #!/bin/bash
-# omaclean clean：先只读扫描，再评审选择，最后执行清理。
 
 if [[ ${OMACLEAN_CLEAN_LOADED:-} ]]; then
     return 0
@@ -7,8 +6,6 @@ fi
 OMACLEAN_CLEAN_LOADED=1
 
 readonly CLEAN_THRESHOLD=$((1024 * 1024))
-# journal 保留上限：交互流程（sudo）直接用此值；--exec 以特权组件内的
-# PRIV_JOURNAL_LIMIT 为准，此处仅用于估算与结果展示。
 readonly CLEAN_JOURNAL_LIMIT=$((100 * 1024 * 1024))
 
 declare -ga CLEAN_IDS=()
@@ -195,7 +192,6 @@ bun|Bun cache|$HOME/.bun/install/cache
 EOF
 }
 
-# 类别只列本轮可选择项；运行中浏览器与受保护回收站另行说明。
 render_clean_scan() {
     local dry_run=$1 category id status note line known_total=0 ready=0
     local cat_bytes=0 category_title=""
@@ -259,7 +255,6 @@ render_clean_scan() {
     echo ""
 }
 
-# 机器可读扫描输出（供状态栏插件等消费方）：只读，不改变任何状态。
 render_clean_json() {
     local id bytes system_flag recommended_flag selectable=0 reclaimable=0 first=1
     printf '{\n'
@@ -296,7 +291,6 @@ render_clean_json() {
     printf '}\n'
 }
 
-# A = 全部清理：选中本轮所有可选择项
 select_all_clean_items() {
     local id
     CLEAN_SELECTED=()
@@ -334,7 +328,6 @@ review_clean_selection() {
 }
 
 
-# ── 扫描后操作菜单（纵向选择，避免单行多键误触）──────────────
 readonly CLEAN_ACTION_COUNT=3
 
 clean_action_label() {
@@ -385,7 +378,6 @@ update_clean_action_highlight() {
     inline_menu_return
 }
 
-# 结果写入第二个参数（nameref）：pick | all | cancel
 prompt_clean_action() {
     local all_label=$1
     local -n _result=$2
@@ -601,10 +593,7 @@ execute_clean_item() {
     esac
 }
 
-# ── 非交互执行（供状态栏插件等消费方）─────────────────────────
 
-# 系统项只把 id 交给已安装 policy 绑定的 root 属主 helper；
-# 命令与参数由 helper 决定，CLI 不安装特权文件。
 execute_pkexec_system_item() {
     local id=$1 target helper rc=0
     CLEAN_RESULT_BYTES=0
@@ -661,14 +650,11 @@ execute_pkexec_system_item() {
     return "$rc"
 }
 
-# 单个执行结果序列化为 JSON 对象（无换行、无前缀）
 exec_result_line() { # id status bytes text
     printf '    {"id": "%s", "status": "%s", "freed_bytes": %d, "freed": "%s", "text": "%s"}' \
         "$(json_escape "$1")" "$2" "${3:-0}" "$(json_escape "$(human_size "${3:-0}")")" "$(json_escape "${4:-}")"
 }
 
-# 按 id 列表执行清理：用户项就地执行；系统项只把 id 交给 root 属主的特权组件提权执行。
-# 只输出 JSON 结果；存在失败项时退出码非零。
 cmd_clean_exec() {
     local exec_ids=$1 allow_trash=$2
     require_cmds du numfmt df realpath
@@ -818,7 +804,6 @@ EOF
     clean_apply_selection "$force_select"
 }
 
-# force_select=true 时扫描后直接打开逐项评审。
 clean_apply_selection() {
     local force_select=$1
     local ready=0 id all_bytes=0
@@ -925,7 +910,6 @@ clean_apply_selection() {
     ((failed == 0))
 }
 
-# analyze：保留 CLI 别名，交互行为与 clean 完全一致
 cmd_analyze() {
     case "${1:-}" in
         -h | --help)

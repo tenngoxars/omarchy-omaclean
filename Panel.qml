@@ -12,10 +12,8 @@ Panel {
   property var hostWidget: null
   readonly property var barIdentity: hostWidget || root
 
-  // 视图：caches（clean）与 artifacts（purge）
   property string view: "caches"
 
-  // 由 BarWidget 注入的扫描结果与执行状态
   property var items: []
   property int selectable: 0
   property string reclaimable: ""
@@ -31,22 +29,18 @@ Panel {
   property bool purgeHasData: false
   property bool purgeScanning: false
 
-  // Artifacts 排序：size（体积降序）| age（最旧优先）
   property string purgeSort: "size"
   onPurgeSortChanged: rebuildPurgeRows()
 
-  // 勾选行模型：{key, category, label, display, bytes, system, ready, checked}
   property var rows: []
   property var purgeRows: []
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
-  // 灰阶从前景色派生，跟随主题
   readonly property color faint: Util.alpha(foreground, 0.45)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   readonly property var categories: ["Package Management", "System", "User Caches", "Developer Caches"]
 
-  // "1.2GiB" → "1.2G"：hero meta 会被 PanelHero 大写，单位保持单字母
   function shortSize(s) {
     return String(s).replace(/iB$/, "").replace(/B$/, "")
   }
@@ -70,7 +64,6 @@ Panel {
            shortSize(root.freeSpace) + " free"
   }
 
-  // 扫描刷新后重建勾选：可选项按 omaclean 推荐默认勾选
   onItemsChanged: rebuildRows()
   onPurgeItemsChanged: rebuildPurgeRows()
 
@@ -148,7 +141,6 @@ Panel {
     return out
   }
   readonly property int selectedCount: selectedKeys.length
-  // 必须是 real（double）：全选合计可超过 int32（2GiB 上限）会溢出成负数
   readonly property real selectedBytes: {
     var total = 0
     for (var i = 0; i < activeRows.length; i++) if (activeRows[i].checked) total += (activeRows[i].bytes || 0)
@@ -174,7 +166,6 @@ Panel {
     return out
   }
 
-  // 全选 / 全不选（与 CLI 的 a 键同语义：未全选时全选，已全选时清空）
   function toggleAll() {
     if (root.execRunning) return
     var value = !root.allSelected
@@ -208,8 +199,6 @@ Panel {
     return out
   }
 
-  // 首个失败项的说明（如「admin component missing — install the reviewed privileged artifact」），
-  // 存在时整条状态行让给它，避免被右侧提示和省略号截断。
   readonly property string failNote: {
     var list = root.lastExec && root.lastExec.items
     if (!list) return ""
@@ -266,7 +255,6 @@ Panel {
     if (root.view === "artifacts" && root.hostWidget && root.hostWidget.scanPurge) root.hostWidget.scanPurge()
   }
 
-  // 面板内执行选中项；clean 的系统项由 omaclean 走 polkit 图形认证提权
   function startExec() {
     if (root.execRunning || root.selectedCount === 0) return
     var keys = root.selectedKeys
@@ -326,7 +314,6 @@ Panel {
         trailingControl: headerActions
       }
 
-      // 固定控制区：视图切换、全选与执行按钮不随列表滚动
       Column {
         id: controls
         anchors.top: hero.bottom
@@ -448,7 +435,6 @@ Panel {
           width: panelFlick.width
           spacing: Style.space(12)
 
-          // ── Caches 视图：本轮可清理项，按分类分组；点击行切换勾选 ──
           Column {
             width: parent.width
             spacing: Style.space(12)
@@ -481,7 +467,6 @@ Panel {
               }
             }
 
-            // 空态
             Item {
               width: parent.width
               implicitHeight: Style.space(36)
@@ -496,7 +481,6 @@ Panel {
               }
             }
 
-            // 运行中浏览器、受保护回收站等本轮不可选项
             Column {
               width: parent.width
               spacing: Style.space(6)
@@ -523,7 +507,6 @@ Panel {
             }
           }
 
-          // ── Artifacts 视图：项目构建产物 ──
           Column {
             width: parent.width
             spacing: Style.space(6)
@@ -571,7 +554,6 @@ Panel {
         }
       }
 
-      // 固定底栏：状态与快捷键提示不随列表滚动
       Item {
         id: footerRow
         anchors.left: parent.left

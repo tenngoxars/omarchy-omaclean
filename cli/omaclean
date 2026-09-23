@@ -4,7 +4,6 @@
 
 set -euo pipefail
 
-# 必须在加载任何用户可写文件前拒绝 root。
 if [[ ${EUID:-0} -eq 0 ]]; then
     printf '%s\n' "Run omaclean without sudo. It requests administrator access when needed." >&2
     exit 1
@@ -52,7 +51,6 @@ EOF
     return 0
 }
 
-# ── 交互式主菜单（平铺于终端内，无全屏弹窗感）────────────────
 readonly -a MAIN_MENU_ITEMS=(
     "Analyze & Clean  Scan junk, review, and clean"
     "Purge            Remove project build artifacts"
@@ -60,7 +58,6 @@ readonly -a MAIN_MENU_ITEMS=(
     "History          View past cleanup operations"
 )
 readonly MAIN_MENU_COUNT=${#MAIN_MENU_ITEMS[@]}
-# 与 show_brand_banner 输出行数对齐：空行 + 4 行 logo + 空行 + 状态 + 空行
 readonly MAIN_MENU_FIRST_ROW=9
 
 main_menu_row() {
@@ -192,7 +189,6 @@ interactive_main_menu() {
     done
 }
 
-# ── 命令行分发 ────────────────────────────────────────────────
 cmd=${1:-}
 if [[ $# -gt 0 ]]; then
     shift

@@ -1,6 +1,4 @@
 #!/bin/bash
-# 回归 read_key 的按键映射与主菜单回车路由（pty 下真实输入）。
-# 背景：read -n 会自动吃掉作为分隔符的换行，回车必须映射为 ENTER，否则菜单卡死。
 
 set -euo pipefail
 
@@ -29,7 +27,6 @@ fail() {
     exit 1
 }
 
-# ── 按键映射 ──────────────────────────────────────────────────
 DRIVER="$SANDBOX/key-driver"
 cat > "$DRIVER" << EOF
 #!/bin/bash
@@ -60,14 +57,11 @@ key_map 'l' RIGHT
 key_map '1' CHAR:1
 printf 'ok   read_key maps keys correctly\n'
 
-# 上下移动不应每次整屏清屏重绘（banner 只出现一次）。
 nav_output=$(printf '\x1b[A\x1b[A\x1b[B\x1b[D' | script -qefc "$ROOT/omaclean" /dev/null | tr -d '\r')
 banner_count=$(grep -c 'omaclean v' <<< "$nav_output")
 ((banner_count == 1)) || fail "arrow navigation redrew banner ${banner_count} times (expected 1)"
 printf 'ok   arrow navigation avoids full-screen redraw\n'
 
-# ── 子流程结束后返回主菜单 ───────────────────────────────────
-# 输入：→ 进入清理，← 取消，← 返回主菜单，← 退出。
 menu_output=$(printf '\x1b[C\x1b[D\x1b[D\x1b[D' | script -qefc "$ROOT/omaclean" /dev/null | tr -d '\r')
 grep -q 'Scan Your System' <<< "$menu_output" || fail '→ did not start the Analyze & Clean flow'
 grep -q 'Cleanup cancelled' <<< "$menu_output" || fail 'cleanup confirmation prompt did not accept ←'
@@ -77,15 +71,12 @@ menu_count=$(grep -c 'Analyze & Clean' <<< "$menu_output")
 [[ -f $HOME/.cache/yay/payload ]] || fail 'menu flow deleted data without confirmation'
 printf 'ok   cleanup flow returns to the main menu\n'
 
-# History 也必须使用同一返回流程。
 history_output=$(printf '4\x1b[D\x1b[D' | script -qefc "$ROOT/omaclean" /dev/null | tr -d '\r')
 grep -q 'Cleanup History' <<< "$history_output" || fail '4 did not open History'
 history_menu_count=$(grep -c 'Analyze & Clean' <<< "$history_output")
 ((history_menu_count >= 2)) || fail 'History exited instead of returning to main menu'
 printf 'ok   History returns to the main menu\n'
 
-# 复选列表重画必须就地更新：相对位移算错会让旧行残留并向下漂移。
-# 因此按方向键前后，屏幕上的条目行数必须一致。
 if command -v tmux > /dev/null 2>&1; then
     mkdir -p "$HOME/.cache/thumbnails"
     dd if=/dev/zero of="$HOME/.cache/thumbnails/payload" bs=1M count=2 status=none

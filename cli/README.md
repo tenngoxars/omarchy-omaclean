@@ -32,21 +32,21 @@ ln -s ~/.config/omarchy/plugins/zykyaka.omaclean/cli/omaclean ~/.local/bin/omacl
 ## 使用
 
 ```bash
-omaclean                  # 交互主菜单（↑↓/1-4 移动，→ 进入，← 退出；子功能结束后 ← 回主菜单，→ 退出）
+omaclean                  # Interactive menu: arrow keys or 1-4; right to enter, left to leave
 omaclean clean            # Scan → Review → Clean → Summary
-omaclean analyze          # clean 的兼容别名，参数与行为相同
-omaclean clean --dry-run  # 只读扫描，到汇总即止，不进入评审或删除
-omaclean clean --select   # 扫描后直接打开行内复选评审
-omaclean clean --trash    # 将回收站纳入可选项（默认保护）
-omaclean clean --json     # 以 JSON 输出扫描结果（只读；供状态栏插件等消费方）
-omaclean clean --exec a,b # 非交互清理指定 id（系统项只把 id 交给特权组件，经 polkit 认证执行）
-omaclean purge            # 行内交互清理项目构建产物（node_modules、target 等）
-omaclean purge --json     # 以 JSON 输出构建产物候选（含默认预选）
-omaclean purge --exec p…  # 非交互清理给定候选路径（仅接受本轮扫描到的候选）
-omaclean purge --dry-run  # 列出全部候选与默认选择
-omaclean purge --age 0    # 将全部候选设为默认选中
-omaclean remove           # 卸载软件（Omarchy 包选择器或 pacman 原生确认）
-omaclean history          # 查看清理操作审计日志
+omaclean analyze          # Alias for clean
+omaclean clean --dry-run  # Read-only scan and summary
+omaclean clean --select   # Open item selection after scanning
+omaclean clean --trash    # Include trash among selectable items
+omaclean clean --json     # Read-only JSON scan results
+omaclean clean --exec a,b # Clean the specified IDs, with polkit for system items
+omaclean purge            # Interactively clean project build artifacts
+omaclean purge --json     # JSON candidates, including default selections
+omaclean purge --exec p…  # Clean candidates found in this scan
+omaclean purge --dry-run  # List candidates and default selections
+omaclean purge --age 0    # Select all candidates by default
+omaclean remove           # Uninstall software
+omaclean history          # Show the cleanup audit log
 ```
 
 ### Analyze & Clean

@@ -24,7 +24,7 @@ ln -s ~/.config/omarchy/plugins/zykyaka.omaclean/cli/omaclean ~/.local/bin/omacl
 系统清理项（pacman 缓存、journal、过期 tmpfiles）需另行安装特权组件。**从审查记录独立取得并核对完整 40 位提交 SHA**，不要从本机插件目录或它打印的命令取值。以下命令只从该提交检出到 root 控制的目录；安装器再次核对提交、两个文件的 SHA-256，并先安装版本化 helper、最后原子发布 policy：
 
 ```bash
-read -r -p '受审查的 40 位提交 SHA：' REVIEWED_SHA
+read -r -p 'Reviewed 40-character commit SHA: ' REVIEWED_SHA
 sudo env -i HOME=/root PATH=/usr/bin:/bin git clone --no-checkout https://github.com/tenngoxars/omarchy-omaclean.git "/root/omaclean-install-$REVIEWED_SHA"
 sudo env -i HOME=/root PATH=/usr/bin:/bin git -C "/root/omaclean-install-$REVIEWED_SHA" checkout --detach "$REVIEWED_SHA"
 sudo env -i HOME=/root PATH=/usr/bin:/bin bash "/root/omaclean-install-$REVIEWED_SHA/cli/install-privileges" "$REVIEWED_SHA"

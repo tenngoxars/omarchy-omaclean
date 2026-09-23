@@ -1,6 +1,4 @@
 #!/bin/bash
-# omaclean purge: 深度清理项目构建产物（node_modules, target, dist 等）。
-# 行内紧凑复选列表、预选老旧产物、实时删除与汇总。
 
 if [[ ${OMACLEAN_PURGE_LOADED:-} ]]; then
     return 0
@@ -10,7 +8,6 @@ OMACLEAN_PURGE_LOADED=1
 OMACLEAN_PURGE_CONFIG="$HOME/.config/omaclean/purge_paths"
 OMACLEAN_PURGE_ARTIFACTS=(node_modules target dist build .next .venv __pycache__ .turbo)
 
-# 扫描根目录解析：优先从配置文件读取，否则使用默认目录
 purge_roots() {
     if [[ -f $OMACLEAN_PURGE_CONFIG ]]; then
         local line real
@@ -41,7 +38,6 @@ purge_roots() {
     return 0
 }
 
-# 扫描候选，收集并排序
 purge_scan_candidates() {
     local min_age=$1
     local now root path mtime age size a
@@ -89,7 +85,6 @@ purge_scan_candidates() {
     return 0
 }
 
-# 扫描并按大小降序排序，结果放入 PURGE_SORTED（TSV：size / human / age / path / root）
 PURGE_SORTED=()
 purge_scan_sorted() {
     local min_age=$1 line
@@ -105,9 +100,7 @@ purge_scan_sorted() {
     return 0
 }
 
-# ── 机器可读输出与非交互执行（供状态栏插件等消费方）──────────
 
-# 扫描结果序列化为 JSON；参数为 min_age 与已排序行数组名（nameref）
 render_purge_json() {
     local min_age=$1
     local -n _sorted=$2
@@ -150,7 +143,6 @@ render_purge_json() {
     printf '\n  ]\n}\n'
 }
 
-# 单个删除结果序列化为 JSON 对象
 purge_exec_line() { # path status bytes text
     printf '    {"path": "%s", "display": "%s", "status": "%s", "freed_bytes": %d, "freed": "%s", "text": "%s"}' \
         "$(json_escape "$1")" \
@@ -160,8 +152,6 @@ purge_exec_line() { # path status bytes text
         "$(json_escape "${4:-}")"
 }
 
-# 按路径列表执行清理：重新扫描并只接受仍是候选的路径（复用扫描阶段的
-# 安全上下文与 .git 跳过规则），随后逐个安全删除。
 cmd_purge_exec() {
     local -a exec_paths=("$@")
     require_cmds du numfmt df realpath find stat
@@ -247,7 +237,6 @@ cmd_purge() {
                 json=true
                 ;;
             --exec)
-                # 其后所有参数都按候选路径处理（argv 形式，避免路径分隔歧义）
                 shift
                 while (($# > 0)); do
                     exec_paths+=("$1")
@@ -294,7 +283,6 @@ EOF
 
     require_cmds du numfmt df realpath find stat
 
-    # 1. 标题横幅
     echo ""
     if [[ "$dry_run" == "true" ]]; then
         echo -e "${BLUE}${BOLD}Purge Project Artifacts (Dry Run)${NC}"
@@ -326,10 +314,8 @@ EOF
         return 0
     fi
 
-    # 大小降序（与扫描输出保持一致）
     local -a sorted_lines=("${PURGE_SORTED[@]}")
 
-    # ── Dry Run 模式 ──────────────────────────────────────────
     if [[ "$dry_run" == "true" ]]; then
         local total_dry_bytes=0 default_count=0
         local raw_sz h_sz age_str age_days path_val r_val display_path
@@ -362,7 +348,6 @@ EOF
         return 0
     fi
 
-    # ── 交互式选择 ────────────────────────────────────────────
     if [[ ! -t 0 || ! -t 1 ]]; then
         die "Interactive selection requires a terminal. Use --dry-run for non-interactive preview."
     fi

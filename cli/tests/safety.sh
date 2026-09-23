@@ -1,12 +1,9 @@
 #!/bin/bash
-# omaclean 安全语义自检：删除校验、符号链接跳过、越界拒绝、purge 根过滤与操作日志。
-# 用法：bash tests/safety.sh
 
 set -euo pipefail
 
 ROOT=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
-# 沙箱建在真实家目录下（/tmp 属于删除禁区），并在其中运行，避免触碰真实环境
 REAL_HOME=$HOME
 SANDBOX=$(mktemp -d "$REAL_HOME/.omaclean-safety.XXXXXX")
 trap 'rm -rf -- "$SANDBOX"' EXIT
@@ -45,7 +42,6 @@ check() { # check <desc> <expected-rc> <cmd...>
     fi
 }
 
-# ── 特权边界：只接受固定 root-owned 程序，不保留脚本提权入口 ──────
 FAKE_ADMIN="$SANDBOX/fake-admin"
 printf '#!/bin/bash\nexit 0\n' > "$FAKE_ADMIN"
 chmod +x "$FAKE_ADMIN"
@@ -54,7 +50,6 @@ check 'refuse user-owned executable' 1 trusted_root_executable "$FAKE_ADMIN"
 check 'refuse unknown system cleanup item' 2 execute_pkexec_system_item unknown
 check 'remove elevated script entry point' 1 "$ROOT/omaclean" _sys journal
 
-# ── 特权组件：白名单映射由 root 属主的 omaclean-priv 决定 ───────
 # shellcheck source=libexec/omaclean-priv
 source "$ROOT/libexec/omaclean-priv"
 
@@ -93,7 +88,7 @@ check 'checkout cannot request sudo installation' 1 "$ROOT/omaclean" install-pri
 installer_rc=0
 installer_output=$(unshare --user --map-root-user bash "$ROOT/install-privileges" \
     0000000000000000000000000000000000000000 2>&1) || installer_rc=$?
-if [[ $installer_rc == 1 && $installer_output == *'只接受 /root 中的独立检出'* ]]; then
+if [[ $installer_rc == 1 && $installer_output == *'only a root-owned independent checkout under /root is accepted'* ]]; then
     printf 'ok   privileged installer rejects mutable checkout\n'
 else
     printf 'FAIL privileged installer accepted mutable checkout: %s\n' "$installer_output"
@@ -114,7 +109,6 @@ else
     FAILED=1
 fi
 
-# ── 目标校验 ──────────────────────────────────────────────────
 mkdir -p "$HOME/cache/sub"
 printf 'data' > "$HOME/cache/file"
 ln -s /etc "$HOME/cache/link-out"
@@ -130,7 +124,6 @@ check 'refuse /etc prefix'   1 assert_deletable /etc/hostname /etc
 check 'allow nested entry'   0 assert_deletable "$HOME/cache/sub" "$HOME/cache"
 check 'allow file entry'     0 assert_deletable "$HOME/cache/file" "$HOME/cache"
 
-# ── 清空目录内容：跳过符号链接，保留目录本身 ──────────────────
 freed=$(clear_dir_contents "$HOME/cache")
 if [[ -d "$HOME/cache" && -L "$HOME/cache/link-out" && -L "$HOME/cache/link-in" &&
     ! -e "$HOME/cache/file" && ! -e "$HOME/cache/sub" ]]; then
@@ -146,7 +139,6 @@ else
     FAILED=1
 fi
 
-# ── delete_tree：越界拒绝、正常删除 ───────────────────────────
 mkdir -p "$SANDBOX/other/artifact/data"
 printf 'x' > "$SANDBOX/other/artifact/data/f"
 check 'delete_tree refuses outside root' 1 delete_tree "$SANDBOX/other/artifact" "$HOME/cache"
@@ -162,7 +154,6 @@ else
     FAILED=1
 fi
 
-# ── purge 根过滤：只保留安全的绝对根 ──────────────────────────
 mkdir -p "$SANDBOX/good" "$HOME/.config/omaclean"
 printf '%s\n' "/" "relative/path" "/nonexistent-omaclean-root" "$SANDBOX/good" > "$HOME/.config/omaclean/purge_paths"
 roots=$(purge_roots 2> /dev/null)
@@ -173,7 +164,6 @@ else
     FAILED=1
 fi
 
-# ── purge 近期产物：显示但默认未选 ─────────────────────────────
 mkdir -p "$SANDBOX/good/old/node_modules" "$SANDBOX/good/recent/dist"
 printf 'old' > "$SANDBOX/good/old/node_modules/file"
 printf 'recent' > "$SANDBOX/good/recent/dist/file"
@@ -189,7 +179,6 @@ else
     FAILED=1
 fi
 
-# ── 操作日志 ──────────────────────────────────────────────────
 log_op test REMOVED /var/log/omaclean-example 123
 if grep -q 'REMOVED /var/log/omaclean-example (123 bytes)' "$OMACLEAN_LOG_FILE"; then
     printf 'ok   log_op writes the operation log\n'
@@ -198,7 +187,6 @@ else
     FAILED=1
 fi
 
-# ── remove 回退：交给 pacman 原生事务确认 ─────────────────────
 REMOVE_STUBS="$SANDBOX/remove-bin"
 REMOVE_LOG="$SANDBOX/remove.log"
 export REMOVE_LOG

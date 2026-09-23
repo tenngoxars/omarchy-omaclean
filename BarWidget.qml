@@ -10,7 +10,6 @@ BarWidget {
 
   readonly property string omacleanBin: Quickshell.env("HOME") + "/.local/bin/omaclean"
 
-  // omaclean clean --json 的扫描结果
   property string freeSpace: ""
   property int selectable: 0
   property string reclaimable: ""
@@ -19,18 +18,15 @@ BarWidget {
   property bool scanning: false
   property bool stale: false
 
-  // 面板内执行的运行状态与最近一次结果
   property bool execRunning: false
   property var lastExec: ({})
 
-  // purge（项目构建产物）扫描结果
   property var purgeItems: []
   property int purgeCandidates: 0
   property string purgeDefaultDisplay: ""
   property bool purgeHasData: false
   property bool purgeScanning: false
 
-  // 面板勾选后调用：非交互执行选中项（系统项由 omaclean 经 polkit 弹窗提权）
   function runClean(ids) {
     if (root.execRunning || !ids || ids.length === 0) return
     root.execRunning = true
@@ -59,7 +55,6 @@ BarWidget {
     root.open()
   }
 
-  // chip：垃圾桶图标 + 本轮可回收量；失败时保留旧值由 dimmed 标记过期
   property string displayText: root.hasData
     ? "\uf1f8 " + (root.selectable > 0 ? root.reclaimable : "0B")
     : "\uf1f8"
@@ -170,7 +165,6 @@ BarWidget {
     }
   }
 
-  // 兜底低频校正：缓存体积变化没有事件源，按小时级刷新即可
   Timer {
     interval: 7200000
     running: true
